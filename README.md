@@ -18,7 +18,7 @@
 
 本專案採用 MIT License【F:LICENSE†L1-L18】。
 
-## 與 LLM 結合的建議
+## 與 LLM 結合的建議  [支援LLM版本](https://github.com/ooropuloo/KaohsiungGarbageTruckTracker)(但沒什麼有效行為XD)
 
 - **自然語言查詢**：透過 LLM 解析使用者輸入的問題，例如「我家附近什麼時候有垃圾車？」並回傳建議的追蹤設定或時間。
 - **對話式提醒**：結合聊天介面，讓使用者能以對話方式設定追蹤或接收即時提示。
