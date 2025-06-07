@@ -51,6 +51,7 @@ body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:#eee;min-heigh
 .truck-item{background:var(--card);border-left:4px solid var(--green);padding:1rem;margin-bottom:.6rem;border-radius:12px;cursor:pointer;transition:transform .25s;}
 .truck-item:hover{transform:translateX(4px);} 
 .truck-item.selected{border-left-color:var(--orange);background:#352315;}
+.truck-item.offline{opacity:.45;filter:grayscale(70%);}
 .truck-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem;}
 .truck-id{font-weight:700;}
 .truck-status{background:var(--green);color:#fff;font-size:.68rem;padding:.12rem .45rem;border-radius:8px;}
@@ -250,7 +251,7 @@ renderList(){
   const distText=Number.isFinite(t.distance)?t.distance+'m':'未知';
   const timeText=diff===null?'未知':(diff?diff+' 分鐘前':'剛剛');
   const item=document.createElement('div');
-  item.className='truck-item';
+  item.className='truck-item'+(t.offline?' offline':'');
   item.dataset.id=t.car;
   item.innerHTML=`<div class='truck-header'><span class='truck-id'>🚛 ${t.car}</span><div><button class='watch-btn ${this.watch.has(t.car)?'active':''}' data-p='${t.car}'><i class='fas ${this.watch.has(t.car)?'fa-star':'fa-regular fa-star'}'></i></button><span class='truck-status'>${t.status}</span></div></div><div class='truck-info'><div><i class='fas fa-map-marker-alt'></i>${t.location}</div><div><i class='fas fa-ruler'></i>距離 <span class='distance-badge'>${distText}</span></div><div><i class='fas fa-clock'></i>${timeText}</div></div>`;
   item.addEventListener('click',e=>{if(e.target.closest('.watch-btn'))return;this.select(t.car);});
