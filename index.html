@@ -196,24 +196,69 @@ async fetch(){if(!this.ready)return;this.setStatus('更新中…','');
  try{const r=await fetch(this.API);if(!r.ok)throw'';let d=await r.json();d=Array.isArray(d)?d:d.data||d.result||d.records||d.items||Object.values(d).find(v=>Array.isArray(v))||[];if(!d.length)throw'';this.process(d);this.setStatus(`連線成功 (${this.filtered.size} 台)`,'success');}
  catch(e){console.warn(e);this.setStatus('連線失敗','error');}}
 process(arr){this.trucks.clear();arr.forEach(o=>{const plate=(o.car||o.plateNumber||o.id||'').toUpperCase();const lng=parseFloat(o.x||o.lng||o.longitude||o.lon);const lat=parseFloat(o.y||o.lat||o.latitude);if(plate&&!isNaN(lat)&&!isNaN(lng)){this.trucks.set(plate,{car:plate,x:lng,y:lat,location:o.location||o.address||'未知',time:o.time||o.updateTime||new Date().toISOString(),status:o.status||'服務中'});}});this.filter();}
-filter(){this.filtered.clear();if(!this.pos)return;for(const [plate,t] of this.trucks.entries()){const dist=this.haversine(this.pos.lat,this.pos.lng,t.y,t.x);t.distance=Math.round(dist);if(dist<=this.range||this.watch.has(plate))this.filtered.set(plate,t);}this.updateMarkers();this.renderList();}
+filter(){
+ this.filtered.clear();
+ if(!this.pos)return;
+ for(const [plate,t] of this.trucks.entries()){
+  const dist=this.haversine(this.pos.lat,this.pos.lng,t.y,t.x);
+  t.distance=Math.round(dist);
+  if(dist<=this.range||this.watch.has(plate))this.filtered.set(plate,t);
+ }
+ for(const plate of this.watch){
+  if(!this.filtered.has(plate)){
+   this.filtered.set(plate,{car:plate,status:'無服務',location:'未知',distance:Infinity,offline:true});
+  }
+ }
+ this.updateMarkers();
+ this.renderList();}
 addWatch(){const val=document.getElementById('watchInput').value.trim().toUpperCase();if(!val)return;if(this.watch.has(val)){Toast.fire({icon:'warning',title:'已在追蹤清單'});return;}this.watch.add(val);localStorage.setItem('watch',JSON.stringify([...this.watch]));document.getElementById('watchInput').value='';Toast.fire({icon:'success',title:`已加入 ${val}`});this.filter();this.renderList();}
-updateMarkers(){this.markers.forEach(m=>this.map.removeLayer(m));this.markers.clear();const threshold=parseInt(document.getElementById('distanceInput').value,10);
- for(const [plate,t] of this.filtered.entries()){const isWatch=this.watch.has(plate);const near=t.distance<=threshold;const color=near?'#dc3545':isWatch?'#ffc107':'#4caf50';const html=`<div style="background:${color};border:3px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3);font-size:12px;color:white;">🚛</div>`;
+updateMarkers(){
+ this.markers.forEach(m=>this.map.removeLayer(m));
+ this.markers.clear();
+ const threshold=parseInt(document.getElementById('distanceInput').value,10);
+ for(const [plate,t] of this.filtered.entries()){
+  if(t.offline)continue;
+  const isWatch=this.watch.has(plate);
+  const near=t.distance<=threshold;
+  const color=near?'#dc3545':isWatch?'#ffc107':'#4caf50';
+  const html=`<div style="background:${color};border:3px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3);font-size:12px;color:white;">🚛</div>`;
   const mk=L.marker([t.y,t.x],{icon:L.divIcon({html,className:'',iconSize:[30,30],iconAnchor:[15,15]})}).addTo(this.map).bindPopup(`<div class='popup-box'><h3>🚛 ${plate}</h3><p><i class='fas fa-map-marker-alt'></i> ${t.location}</p><p><i class='fas fa-ruler'></i> 距離 ${t.distance} 公尺</p><p><i class='fas fa-clock'></i> ${t.time.split('T')[0]}</p></div>`,{className:'custom-popup',tipClass:'custom-popup-tip'});
-  mk.on('click',()=>this.select(plate));this.markers.set(plate,mk);
-  if(near&&!this.alerted.has(plate)&&!mute){Toast.fire({icon:'warning',title:`${plate} 距離 ${t.distance}m`});notify('垃圾車接近',`${plate} (${t.distance}m)`);navigator.vibrate?.(250);this.alerted.add(plate);} }
+  mk.on('click',()=>this.select(plate));
+  this.markers.set(plate,mk);
+  if(near&&!this.alerted.has(plate)&&!mute){
+   Toast.fire({icon:'warning',title:`${plate} 距離 ${t.distance}m`});
+   notify('垃圾車接近',`${plate} (${t.distance}m)`);
+   navigator.vibrate?.(250);
+   this.alerted.add(plate);
+  }
+ }
 }
-renderList(){const list=document.getElementById('truckList');list.innerHTML='';if(!this.filtered.size){list.innerHTML='<div class="no-trucks"><i class="fas fa-search"></i><div>附近沒有垃圾車</div></div>';document.getElementById('truckCount').textContent='0';return;}
+renderList(){
+ const list=document.getElementById('truckList');
+ list.innerHTML='';
+ if(!this.filtered.size){
+  list.innerHTML='<div class="no-trucks"><i class="fas fa-search"></i><div>附近沒有垃圾車</div></div>';
+  document.getElementById('truckCount').textContent='0';
+  return;
+ }
  [...this.filtered.values()].sort((a,b)=>{
   if(this.watch.has(a.car)&&!this.watch.has(b.car))return -1;
   if(!this.watch.has(a.car)&&this.watch.has(b.car))return 1;
-  return a.distance-b.distance;}).forEach(t=>{const diff=Math.floor((Date.now()-new Date(t.time))/60000);
-   const item=document.createElement('div');item.className='truck-item';item.dataset.id=t.car;
-   item.innerHTML=`<div class='truck-header'><span class='truck-id'>🚛 ${t.car}</span><div><button class='watch-btn ${this.watch.has(t.car)?'active':''}' data-p='${t.car}'><i class='fas ${this.watch.has(t.car)?'fa-star':'fa-regular fa-star'}'></i></button><span class='truck-status'>${t.status}</span></div></div><div class='truck-info'><div><i class='fas fa-map-marker-alt'></i>${t.location}</div><div><i class='fas fa-ruler'></i>距離 <span class='distance-badge'>${t.distance}m</span></div><div><i class='fas fa-clock'></i>${diff?diff+' 分鐘前':'剛剛'}</div></div>`;
-   item.addEventListener('click',e=>{if(e.target.closest('.watch-btn'))return;this.select(t.car);});
-   item.querySelector('.watch-btn').addEventListener('click',e=>{e.stopPropagation();this.toggleWatch(t.car,e.currentTarget);});list.appendChild(item);});
- document.getElementById('truckCount').textContent=this.filtered.size;}
+  return a.distance-b.distance;
+ }).forEach(t=>{
+  const diff=t.time?Math.floor((Date.now()-new Date(t.time))/60000):null;
+  const distText=Number.isFinite(t.distance)?t.distance+'m':'未知';
+  const timeText=diff===null?'未知':(diff?diff+' 分鐘前':'剛剛');
+  const item=document.createElement('div');
+  item.className='truck-item';
+  item.dataset.id=t.car;
+  item.innerHTML=`<div class='truck-header'><span class='truck-id'>🚛 ${t.car}</span><div><button class='watch-btn ${this.watch.has(t.car)?'active':''}' data-p='${t.car}'><i class='fas ${this.watch.has(t.car)?'fa-star':'fa-regular fa-star'}'></i></button><span class='truck-status'>${t.status}</span></div></div><div class='truck-info'><div><i class='fas fa-map-marker-alt'></i>${t.location}</div><div><i class='fas fa-ruler'></i>距離 <span class='distance-badge'>${distText}</span></div><div><i class='fas fa-clock'></i>${timeText}</div></div>`;
+  item.addEventListener('click',e=>{if(e.target.closest('.watch-btn'))return;this.select(t.car);});
+  item.querySelector('.watch-btn').addEventListener('click',e=>{e.stopPropagation();this.toggleWatch(t.car,e.currentTarget);});
+  list.appendChild(item);
+ });
+ document.getElementById('truckCount').textContent=this.filtered.size;
+}
 filterList(term){const k=term.trim().toUpperCase();document.querySelectorAll('.truck-item').forEach(el=>{el.style.display=k?(el.dataset.id.includes(k)?'':'none'):'';});}
 
 toggleWatch(plate,btn){if(this.watch.has(plate)){this.watch.delete(plate);btn.classList.remove('active');btn.innerHTML='<i class="fas fa-regular fa-star"></i>';Toast.fire({icon:'info',title:`已取消 ${plate}`});}
