@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高雄市垃圾車即時追蹤 - 附近500公尺</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet" crossorigin="anonymous">
+    <style>
+      *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Segoe UI',sans-serif;background:#121212;color:#eee;min-height:100vh;display:flex;flex-direction:column}
+      :root{--green:#4CAF50;--orange:#ff5722;--yellow:#ffc107;--red:#dc3545;--card:#1e1e1e;--border:#333}
+      .header{display:flex;gap:1rem;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:1rem 2rem;background:#000000dd;backdrop-filter:blur(8px)}
+      .header h1{font-size:1.4rem;display:flex;align-items:center;gap:.5rem}
+      .header-controls{display:flex;gap:1rem;flex-wrap:wrap}
+      .control-box{display:flex;align-items:center;gap:.5rem;background:#222;padding:.4rem .8rem;border-radius:24px;border:1px solid var(--border)}
+      .control-box input{width:60px;text-align:center;padding:.2rem .4rem;border:1px solid var(--border);border-radius:4px;background:#111;color:#eee}
+      .control-box select{padding:.2rem .4rem;border:1px solid var(--border);border-radius:4px;background:#111;color:#eee}
+      .status-indicator{display:flex;align-items:center;gap:.5rem;padding:.35rem .9rem;border-radius:20px;font-size:.85rem;background:var(--yellow);color:#111}
+      .status-indicator.success{background:var(--green);color:#fff}
+      .status-indicator.error{background:var(--red)}
+      .status-indicator.gps-waiting{background:var(--orange);color:#fff}
+      .pulse{animation:pulse 1.5s infinite}
+      @keyframes pulse{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}
+      .main{flex:1;display:flex;gap:1rem;padding:1rem}
+      .sidebar{width:350px;display:flex;flex-direction:column;background:#000000dd;backdrop-filter:blur(8px);border-radius:16px;overflow:hidden}
+      .sidebar-header{text-align:center;padding:1rem;background:linear-gradient(135deg,var(--green),#45a049)}
+      .sidebar-header h2{font-size:1.2rem;margin-bottom:.4rem}
+      .truck-count{font-size:2rem;font-weight:700}
+      .distance-info{font-size:.9rem;opacity:.9;margin-top:.3rem}
+      .search-box{padding:.6rem 1rem;border-bottom:1px solid var(--border)}
+      .search-box input{width:100%;padding:.6rem .8rem;border-radius:8px;border:1px solid var(--border);background:#111;color:#eee}
+      .watch-list{padding:.5rem 1rem;border-bottom:1px solid var(--border)}
+      .watch-list-item{display:flex;align-items:center;justify-content:space-between;padding:.2rem 0}
+      .watch-list-item span{font-size:.9rem}
+      .watch-list-item button{background:none;border:none;color:var(--orange);cursor:pointer}
+      .truck-list{flex:1;overflow-y:auto;padding:.5rem 1rem}
+      .truck-item{background:var(--card);border-left:4px solid var(--green);padding:1rem;margin-bottom:.7rem;border-radius:12px;cursor:pointer;transition:.25s}
+      .truck-item:hover{transform:translateX(4px)}
+      .truck-item.selected{border-left-color:var(--orange);background:#352315}
+      .truck-item.out-of-range{opacity:.6}
+      .truck-header{display:flex;justify-content:space-between;margin-bottom:.4rem}
+      .truck-id{font-weight:700}
+      .truck-status{background:var(--green);color:#fff;font-size:.75rem;padding:.15rem .5rem;border-radius:8px}
+      .truck-info{font-size:.85rem;line-height:1.4;color:#aaa}
+      .truck-info i{width:18px;margin-right:.4rem;color:var(--green)}
+      .distance-badge{background:var(--orange);color:#fff;font-size:.7rem;padding:.1rem .4rem;border-radius:6px;margin-left:.5rem}
+      .map-wrap{flex:1;position:relative;border-radius:16px;overflow:hidden}
+      #map{width:100%;height:100%}
+      .overlay{position:absolute;inset:0;background:#000000cc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;color:#fff;font-size:1rem;z-index:100}
+      .spinner{width:48px;height:48px;border:4px solid #fff3;border-top:4px solid #fff;border-radius:50%;animation:spin 1s linear infinite}
+      @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+      .no-trucks{text-align:center;padding:2rem 1rem;color:#999}
+      .no-trucks i{font-size:3rem;margin-bottom:1rem;opacity:.5}
+      @media(max-width:768px){
+        .main{flex-direction:column}
+        .map-wrap{order:1;height:60vh}
+        .sidebar{order:2;width:100%;max-height:40vh;overflow-y:auto}
+      }
+    </style>
+</head>
+<body>
+  <header class="header">
+    <h1><i class="fas fa-truck"></i> 附近垃圾車追蹤</h1>
+    <div class="header-controls">
+      <div class="control-box"><i class="fas fa-clock"></i> 更新:<input type="number" id="intervalInput" value="30" min="5" max="300">秒</div>
+      <div class="control-box"><i class="fas fa-crosshairs"></i> 範圍:
+        <select id="rangeSelect">
+          <option value="200">200m</option>
+          <option value="500" selected>500m</option>
+          <option value="1000">1km</option>
+          <option value="2000">2km</option>
+          <option value="5000">5km</option>
+        </select>
+      </div>
+      <div class="control-box"><i class="fas fa-bell"></i> 提醒:<input type="number" id="distanceInput" value="100" min="50" max="500">m</div>
+      <div class="control-box"><i class="fas fa-star"></i> 關注:<input id="watchInput" style="width:90px" placeholder="車牌"><button id="addWatchBtn">+</button></div>
+      <div id="statusIndicator" class="status-indicator gps-waiting"><i class="fas fa-circle pulse"></i><span id="statusText">等待定位…</span></div>
+    </div>
+  </header>
+  <div class="main">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2><i class="fas fa-location-arrow"></i> 附近垃圾車</h2>
+        <div class="truck-count" id="truckCount">0</div>
+        <div>台垃圾車</div>
+        <div class="distance-info" id="rangeInfo">搜尋範圍：500公尺</div>
+      </div>
+      <div class="search-box"><input id="searchInput" placeholder="搜尋車牌…"/></div>
+      <div class="watch-list" id="watchList"></div>
+      <div class="truck-list" id="truckList">
+        <div class="no-trucks">
+          <i class="fas fa-map-marker-alt"></i>
+          <div>等待GPS定位...</div>
+        </div>
+      </div>
+    </aside>
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="overlay" id="mapOverlay">
+        <div class="spinner"></div>
+        <div>載入地圖…</div>
+      </div>
+    </section>
+  </div>
+<script>
+class GarbageTruckTracker {
+  constructor() {
+    this.API_URL = 'https://api.kcg.gov.tw/api/service/Get/aaf4ce4b-4ca8-43de-bfaf-6dc97e89cac0';
+    this.updateInterval = 30000;
+    this.searchRange = 500;
+    this.trucks = new Map();
+    this.nearbyTrucks = new Map();
+    this.markers = new Map();
+    this.alerted = new Set();
+    this.trackedPlates = new Set();
+    this.userPos = null;
+    this.userMarker = null;
+    this.rangeCircle = null;
+    this.isGPSReady = false;
+    this.initMap();
+    this.bindUI();
+    this.initGeolocation();
+  }
+  initMap() {
+    this.map = L.map('map').setView([22.6273, 120.3014], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(this.map);
+    document.getElementById('mapOverlay').style.display = 'none';
+  }
+  initGeolocation() {
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(pos => {
+        this.userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        if (!this.isGPSReady) { this.isGPSReady = true; this.startTracking(); }
+        this.updateUserMarker();
+        this.updateRangeCircle();
+        this.filterNearbyTrucks();
+      }, err => {
+        console.warn('定位服務無法使用:', err.message);
+        this.userPos = { lat: 22.6273, lng: 120.3014 };
+        this.isGPSReady = true;
+        this.updateUserMarker();
+        this.updateRangeCircle();
+        this.startTracking();
+        document.getElementById('statusText').textContent = '使用預設位置';
+        document.getElementById('statusIndicator').className = 'status-indicator';
+      }, { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 });
+    } else {
+      console.warn('瀏覽器不支援定位功能');
+      this.userPos = { lat: 22.6273, lng: 120.3014 };
+      this.isGPSReady = true;
+      this.updateUserMarker();
+      this.updateRangeCircle();
+      this.startTracking();
+    }
+  }
+  updateUserMarker() {
+    if (!this.userPos) return;
+    if (this.userMarker) {
+      this.userMarker.setLatLng([this.userPos.lat, this.userPos.lng]);
+    } else {
+      this.userMarker = L.marker([this.userPos.lat, this.userPos.lng], {
+        icon: L.divIcon({ html: '<i class="fas fa-location-arrow" style="color:#4da8ff;font-size:1.5rem"></i>', className: '', iconSize: [30, 30] })
+      }).addTo(this.map).bindPopup('您目前的位置');
+      this.map.setView([this.userPos.lat, this.userPos.lng], 15);
+    }
+  }
+  updateRangeCircle() {
+    if (!this.userPos) return;
+    if (this.rangeCircle) this.map.removeLayer(this.rangeCircle);
+    this.rangeCircle = L.circle([this.userPos.lat, this.userPos.lng], {
+      color: '#4CAF50', fillColor: '#4CAF50', fillOpacity: 0.1, weight: 2, radius: this.searchRange
+    }).addTo(this.map);
+  }
+  bindUI() {
+    document.getElementById('intervalInput').addEventListener('change', e => {
+      this.updateInterval = parseInt(e.target.value, 10) * 1000; this.restartTracking();
+    });
+    document.getElementById('rangeSelect').addEventListener('change', e => {
+      this.searchRange = parseInt(e.target.value, 10);
+      document.getElementById('rangeInfo').textContent = `搜尋範圍：${this.searchRange >= 1000 ? (this.searchRange/1000)+'公里' : this.searchRange+'公尺'}`;
+      this.updateRangeCircle();
+      this.filterNearbyTrucks();
+      this.alerted.clear();
+    });
+    document.getElementById('distanceInput').addEventListener('change', () => { this.alerted.clear(); });
+    document.getElementById('searchInput').addEventListener('input', e => { this.filterList(e.target.value.trim()); });
+    document.getElementById('addWatchBtn').addEventListener('click', () => this.addTrackedPlate());
+  }
+  addTrackedPlate() {
+    const input = document.getElementById('watchInput');
+    const plate = input.value.trim().toUpperCase();
+    if (plate) {
+      this.trackedPlates.add(plate); input.value=''; this.renderTrackedPlates();
+    }
+  }
+  renderTrackedPlates() {
+    const list = document.getElementById('watchList');
+    list.innerHTML = '';
+    this.trackedPlates.forEach(plate => {
+      const div = document.createElement('div');
+      div.className = 'watch-list-item';
+      div.innerHTML = `<span>⭐ ${plate}</span><button data-plate="${plate}">×</button>`;
+      div.querySelector('button').addEventListener('click', e => {
+        this.trackedPlates.delete(e.target.dataset.plate); this.renderTrackedPlates();
+      });
+      list.appendChild(div);
+    });
+  }
+  async fetchData() {
+    if (!this.isGPSReady) return;
+    try {
+      document.getElementById('statusText').textContent = '更新中…';
+      const res = await fetch(this.API_URL, { method:'GET', headers:{'Accept':'application/json'}, mode:'cors' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rawData = await res.json();
+      let truckData=[];
+      if (Array.isArray(rawData)) truckData=rawData; else if (rawData && typeof rawData==='object') {
+        if (Array.isArray(rawData.data)) truckData=rawData.data; else if (Array.isArray(rawData.result)) truckData=rawData.result;
+        else if (Array.isArray(rawData.records)) truckData=rawData.records; else if (Array.isArray(rawData.items)) truckData=rawData.items; else {
+          const values=Object.values(rawData); const arr=values.find(v=>Array.isArray(v)); if (arr) truckData=arr;
+        }
+      }
+      if (!Array.isArray(truckData) || truckData.length===0) throw new Error('no data');
+      this.processData(truckData);
+      document.getElementById('statusText').textContent = `已連線 (附近 ${this.nearbyTrucks.size} 台)`;
+      document.getElementById('statusIndicator').className = 'status-indicator success';
+    } catch(err){
+      console.error('API 連線錯誤:',err);
+      document.getElementById('statusText').textContent='連線失敗';
+      document.getElementById('statusIndicator').className='status-indicator error';
+      if (this.trucks.size===0) this.loadMockData();
+    }
+  }
+  loadMockData() {
+    const mock=[
+      {car:'KHH-001',x:120.3014,y:22.6273,location:'高雄車站周邊',time:new Date(Date.now()-120000).toISOString(),status:'清運中'},
+      {car:'KHH-002',x:120.2945,y:22.6206,location:'愛河沿岸',time:new Date(Date.now()-300000).toISOString(),status:'清運中'},
+      {car:'KHH-003',x:this.userPos.lng+0.002,y:this.userPos.lat+0.001,location:'您附近區域',time:new Date(Date.now()-180000).toISOString(),status:'清運中'},
+      {car:'KHH-004',x:this.userPos.lng-0.001,y:this.userPos.lat+0.002,location:'您附近區域',time:new Date(Date.now()-240000).toISOString(),status:'清運中'},
+      {car:'KHH-005',x:120.33,y:22.65,location:'鳳山區中山路',time:new Date(Date.now()-90000).toISOString(),status:'清運中'}
+    ];
+    this.processData(mock);
+    document.getElementById('statusText').textContent='展示模式 (模擬資料)';
+    document.getElementById('statusIndicator').className='status-indicator';
+  }
+  processData(data){
+    if(!Array.isArray(data))return;
+    this.trucks.clear();
+    let valid=0;
+    data.forEach(item=>{
+      const carId=item.car||item.carId||item.plateNumber||item.vehicle_id||item.id;
+      const lng=parseFloat(item.x||item.lng||item.longitude||item.lon);
+      const lat=parseFloat(item.y||item.lat||item.latitude);
+      if(carId&&!isNaN(lng)&&!isNaN(lat)){
+        const truck={car:carId,x:lng,y:lat,location:item.location||item.address||item.area||item.district||'位置未知',time:item.time||item.updateTime||item.timestamp||new Date().toISOString(),status:item.status||item.state||'服務中'};
+        this.trucks.set(carId,truck);valid++;}
+    });
+    console.log(`處理完成 ${valid}/${data.length}`);
+    this.filterNearbyTrucks();
+  }
+  filterNearbyTrucks(){
+    if(!this.userPos)return;
+    this.nearbyTrucks.clear();
+    this.trucks.forEach((truck,plate)=>{
+      const distance=this.haversine(this.userPos.lat,this.userPos.lng,parseFloat(truck.y),parseFloat(truck.x));
+      truck.distance=Math.round(distance); // always store distance
+      if(distance<=this.searchRange) this.nearbyTrucks.set(plate,truck);
+    });
+    this.updateMarkers();
+    this.renderList();
+  }
+  updateMarkers(){
+    this.markers.forEach(m=>{this.map.removeLayer(m)});
+    this.markers.clear();
+    const alertThreshold=parseInt(document.getElementById('distanceInput').value,10);
+    this.nearbyTrucks.forEach((truck,plate)=>{
+      const lat=parseFloat(truck.y),lng=parseFloat(truck.x),dist=truck.distance;
+      const isNear=dist<=alertThreshold;
+      const marker=L.marker([lat,lng],{icon:L.divIcon({html:`<i class="fas fa-truck" style="font-size:22px;color:${isNear?'var(--red)':'var(--green)'}"></i>`,className:'',iconSize:[24,24]})}).addTo(this.map);
+      marker.bindPopup(`<strong>🚛 ${plate}</strong><br>📍 ${truck.location}<br>📏 距離您 ${dist} 公尺`);
+      marker.on('click',()=>this.selectTruck(plate));
+      this.markers.set(plate,marker);
+      if(isNear&&!this.alerted.has(plate)){alert(`垃圾車 ${plate} 距離您只有 ${dist} 公尺！`);this.alerted.add(plate);}    
+    });
+    // check tracked plates even if not within searchRange
+    this.trackedPlates.forEach(plate=>{
+      const t=this.trucks.get(plate);
+      if(t&&t.distance<=500&&!this.alerted.has(plate)){
+        alert(`關注的垃圾車 ${plate} 接近您 ${t.distance} 公尺！`);
+        this.alerted.add(plate);
+      }
+    });
+  }
+  renderList(){
+    const listEl=document.getElementById('truckList');
+    listEl.innerHTML='';
+    const searchTerm=document.getElementById('searchInput').value.trim().toUpperCase();
+    const trucksToShow=searchTerm?Array.from(this.trucks.entries()).filter(([p])=>p.includes(searchTerm)):Array.from(this.nearbyTrucks.entries());
+    if(trucksToShow.length===0){
+      const no=document.createElement('div');no.className='no-trucks';no.innerHTML=`<i class="fas fa-search"></i><div>沒有符合條件的垃圾車</div>`;listEl.appendChild(no);
+      document.getElementById('truckCount').textContent='0';return;
+    }
+    trucksToShow.sort((a,b)=>a[1].distance-b[1].distance);
+    trucksToShow.forEach(([plate,truck])=>{
+      const item=document.createElement('div');
+      item.className='truck-item';
+      if(truck.distance>this.searchRange&&!searchTerm) item.classList.add('out-of-range');
+      item.dataset.id=plate;
+      const updateTime=truck.time?new Date(truck.time):new Date();
+      const diff=Math.floor((Date.now()-updateTime.getTime())/60000);
+      item.innerHTML=`<div class="truck-header"><span class="truck-id">🚛 ${plate}</span><span class="truck-status">服務中</span></div><div class="truck-info"><div><i class="fas fa-map-marker-alt"></i>${truck.location}</div><div><i class="fas fa-ruler"></i>距離您 <span class="distance-badge">${truck.distance}m</span></div><div><i class="fas fa-clock"></i>${diff>0?diff+' 分鐘前':'剛剛更新'}</div></div>`;
+      item.addEventListener('click',()=>this.selectTruck(plate));
+      listEl.appendChild(item);
+    });
+    document.getElementById('truckCount').textContent=trucksToShow.length;
+  }
+  selectTruck(plate){
+    document.querySelectorAll('.truck-item.selected').forEach(el=>el.classList.remove('selected'));
+    const el=document.querySelector(`.truck-item[data-id="${plate}"]`); if(el) el.classList.add('selected');
+    const marker=this.markers.get(plate); if(marker){ marker.openPopup(); this.map.setView(marker.getLatLng(),16); }
+  }
+  filterList(term){ this.renderList(); }
+  haversine(lat1,lon1,lat2,lon2){ const R=6371e3; const toRad=d=>d*Math.PI/180; const dLat=toRad(lat2-lat1); const dLon=toRad(lon2-lon1); const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2; const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); return R*c; }
+  startTracking(){ if(!this.isGPSReady) return; this.fetchData(); this.intervalId=setInterval(()=>this.fetchData(),this.updateInterval); }
+  restartTracking(){ if(this.intervalId) clearInterval(this.intervalId); this.alerted.clear(); this.startTracking(); }
+}
+document.addEventListener('DOMContentLoaded',()=>new GarbageTruckTracker());
+</script>
+</body>
+</html>
