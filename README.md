@@ -4,10 +4,10 @@
 
 ## 主要功能
 
-- 透過 [Kaohsiung City Government API](https://api.kcg.gov.tw/) 取得垃圾車座標【F:index.html†L152-L153】。
-- 以 Leaflet 顯示地圖並標記車輛位置【F:index.html†L160-L161】。
-- 允許使用者追蹤特定車牌，並以本機儲存設定【F:index.html†L154-L155】【F:index.html†L219-L221】。
-- 提供通知與警示功能，如垃圾車接近時提醒【F:index.html†L202-L205】。
+- 透過 [Kaohsiung City Government API](https://api.kcg.gov.tw/) 取得垃圾車座標【F:index.html†L160-L161】。
+- 以 Leaflet 顯示地圖並標記車輛位置【F:index.html†L168-L169】。
+- 允許使用者追蹤特定車牌，並以本機儲存設定【F:index.html†L162-L163】【F:index.html†L227-L229】。
+- 提供通知與警示功能，如垃圾車接近時提醒【F:index.html†L210-L213】。
 
 ## 如何使用
 
