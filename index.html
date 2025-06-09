@@ -231,7 +231,7 @@ updateMarkers(){
   const near=t.distance<=threshold;
   const color=near?'#dc3545':isWatch?'#ffc107':'#4caf50';
   const html=`<div style="background:${color};border:3px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3);font-size:12px;color:white;">🚛</div>`;
-  const mk=L.marker([t.y,t.x],{icon:L.divIcon({html,className:'',iconSize:[30,30],iconAnchor:[15,15]})}).addTo(this.map).bindPopup(`<div class='popup-box'><h3>🚛 ${plate}</h3><p><i class='fas fa-map-marker-alt'></i> ${t.location}</p><p><i class='fas fa-ruler'></i> 距離 ${t.distance} 公尺</p><p><i class='fas fa-clock'></i> ${t.time.split('T')[0]}</p></div>`,{className:'custom-popup',tipClass:'custom-popup-tip'});
+  const mk=L.marker([t.y,t.x],{icon:L.divIcon({html,className:'',iconSize:[30,30],iconAnchor:[15,15]})}).addTo(this.map).bindPopup(`<div class='popup-box'><h3>🚛 ${plate}</h3><p><i class='fas fa-map-marker-alt'></i> ${t.location}</p><p><i class='fas fa-ruler'></i> 距離 ${t.distance} 公尺</p><p><i class='fas fa-clock'></i> ${new Date(t.time).toLocaleString('zh-TW',{hour12:false})}</p></div>`,{className:'custom-popup',tipClass:'custom-popup-tip'});
   mk.on('click',()=>this.select(plate));
   this.markers.set(plate,mk);
   if(near&&!this.alerted.has(plate)&&!mute){
