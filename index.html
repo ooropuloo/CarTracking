@@ -99,6 +99,12 @@ body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:#eee;min-heigh
 .locate-btn i{font-size:1.2rem;}
 .locate-btn:hover{background:#ff6b36;}
 
+/********** LOG PANEL **********/
+.log-panel{position:fixed;bottom:0;left:0;right:0;max-height:30vh;overflow-y:auto;background:#000c;padding:.4rem;font-size:.8rem;z-index:1200;font-family:monospace;color:#eee;}
+.log-panel .log-item{margin-bottom:.2rem;word-break:break-all;}
+.log-panel .warn{color:var(--yellow);}
+.log-panel .error{color:var(--red);}
+
 /********** RESPONSIVE **********/
 @media(max-width:768px){
   .main{flex-direction:column;padding:.5rem;}
@@ -144,15 +150,20 @@ body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:#eee;min-heigh
   <section class="map-wrap">
     <div id="map"></div>
     <button id="locateBtn" style="position:absolute;top:16px;right:16px;width:40px;height:40px;border:none;border-radius:50%;background:var(--yellow);color:#111;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px #0006;cursor:pointer;z-index:998;" title="回到定位"><i class="fas fa-location-crosshairs"></i></button>
-    <div id="mapOverlay" class="overlay"><div class="spinner"></div><div>載入地圖…</div></div>
+  <div id="mapOverlay" class="overlay"><div class="spinner"></div><div>載入地圖…</div></div>
   </section>
 </div>
+<div id="logPanel" class="log-panel"></div>
 <script>
 (function(){
 const Toast=Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timer:2200,timerProgressBar:true,background:'#333',color:'#fff'});
 const notify=(title,body)=>{if(mute)return; if(Notification.permission==='granted'){new Notification(title,{body});}else if(Notification.permission!=='denied'){Notification.requestPermission().then(p=>p==='granted'&&!mute&&new Notification(title,{body}));}};
 let mute=JSON.parse(localStorage.getItem('mute')||'false');
 document.getElementById('muteBtn').classList.toggle('active',mute);
+
+const logPanel=document.getElementById('logPanel');
+function addLog(type,msg){if(!logPanel)return;const item=document.createElement('div');item.className='log-item '+type;item.textContent='['+new Date().toLocaleTimeString()+'] '+msg;logPanel.appendChild(item);logPanel.scrollTop=logPanel.scrollHeight;}
+['log','warn','error'].forEach(t=>{const o=console[t];console[t]=(...a)=>{o.apply(console,a);addLog(t,a.join(' '));};});
 
 document.getElementById('muteBtn').addEventListener('click',()=>{mute=!mute;localStorage.setItem('mute',JSON.stringify(mute));const icon=document.querySelector('#muteBtn i');icon.className=mute?'fas fa-bell-slash':'fas fa-bell';document.getElementById('muteBtn').classList.toggle('active',mute);Toast.fire({icon:'info',title:mute?'已開啟靜音':'已關閉靜音'});});
 
