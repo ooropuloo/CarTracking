@@ -157,7 +157,18 @@ body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:#eee;min-heigh
 <script>
 (function(){
 const Toast=Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timer:2200,timerProgressBar:true,background:'#333',color:'#fff'});
-const notify=(title,body)=>{if(mute)return; if(Notification.permission==='granted'){new Notification(title,{body});}else if(Notification.permission!=='denied'){Notification.requestPermission().then(p=>p==='granted'&&!mute&&new Notification(title,{body}));}};
+const notify=(title,body)=>{
+ if(mute) return;
+ if(!('Notification' in window)){
+  Toast.fire({icon:'info',title:`${title}: ${body}`});
+  return;
+ }
+ if(Notification.permission==='granted'){
+  new Notification(title,{body});
+ }else if(Notification.permission!=='denied'){
+  Notification.requestPermission().then(p=>p==='granted'&&!mute&&new Notification(title,{body}));
+ }
+};
 let mute=JSON.parse(localStorage.getItem('mute')||'false');
 document.getElementById('muteBtn').classList.toggle('active',mute);
 
