@@ -182,6 +182,7 @@ class Tracker{
 constructor(){
  this.API='https://api.kcg.gov.tw/api/service/Get/aaf4ce4b-4ca8-43de-bfaf-6dc97e89cac0';
  this.interval=3e4;this.range=500;this.trucks=new Map();this.filtered=new Map();this.markers=new Map();this.alerted=new Set();
+ this.routeLine=null;this.stopLayer=L.layerGroup();
  this.watch=new Set(JSON.parse(localStorage.getItem('watch')||'[]'));
  this.pos=null;this.ready=false;this.userMarker=null;this.circle=null;this.map=null;
  this.sid=document.getElementById('sidebar');this.backdrop=document.getElementById('backdrop');
@@ -190,6 +191,7 @@ constructor(){
 initMap(){
  this.map=L.map('map').setView([22.6273,120.3014],12);
  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(this.map);
+ this.stopLayer.addTo(this.map);
  document.getElementById('mapOverlay').style.display='none';}
 
 updateUserMarker(){
@@ -226,7 +228,7 @@ setStatus(txt,cls){document.getElementById('statusText').textContent=txt;documen
 async fetch(){if(!this.ready)return;this.setStatus('更新中…','');
  try{const r=await fetch(this.API);if(!r.ok)throw'';let d=await r.json();d=Array.isArray(d)?d:d.data||d.result||d.records||d.items||Object.values(d).find(v=>Array.isArray(v))||[];if(!d.length)throw'';this.process(d);this.setStatus(`連線成功 (${this.filtered.size} 台)`,'success');}
  catch(e){console.warn(e);this.setStatus('連線失敗','error');}}
-process(arr){this.trucks.clear();arr.forEach(o=>{const plate=(o.car||o.plateNumber||o.id||'').toUpperCase();const lng=parseFloat(o.x||o.lng||o.longitude||o.lon);const lat=parseFloat(o.y||o.lat||o.latitude);if(plate&&!isNaN(lat)&&!isNaN(lng)){this.trucks.set(plate,{car:plate,x:lng,y:lat,location:o.location||o.address||'未知',time:o.time||o.updateTime||new Date().toISOString(),status:o.status||'服務中'});}});this.filter();}
+process(arr){this.trucks.clear();arr.forEach(o=>{const plate=(o.car||o.plateNumber||o.id||'').toUpperCase();const lng=parseFloat(o.x||o.lng||o.longitude||o.lon);const lat=parseFloat(o.y||o.lat||o.latitude);if(plate&&!isNaN(lat)&&!isNaN(lng)){const route=this.normalizeRoute(o);const stops=this.normalizeStops(o);this.trucks.set(plate,{car:plate,x:lng,y:lat,location:o.location||o.address||'未知',time:o.time||o.updateTime||new Date().toISOString(),status:o.status||'服務中',route,stops});}});this.filter();}
 filter(){
  this.filtered.clear();
  if(!this.pos)return;
@@ -241,7 +243,8 @@ filter(){
   }
  }
  this.updateMarkers();
- this.renderList();}
+ this.renderList();
+ this.syncSelectedRoute();}
 addWatch(){const val=document.getElementById('watchInput').value.trim().toUpperCase();if(!val)return;if(this.watch.has(val)){Toast.fire({icon:'warning',title:'已在追蹤清單'});return;}this.watch.add(val);localStorage.setItem('watch',JSON.stringify([...this.watch]));document.getElementById('watchInput').value='';Toast.fire({icon:'success',title:`已加入 ${val}`});this.filter();this.renderList();}
 updateMarkers(){
  this.markers.forEach(m=>this.map.removeLayer(m));
@@ -296,7 +299,43 @@ toggleWatch(plate,btn){if(this.watch.has(plate)){this.watch.delete(plate);btn.cl
  else{this.watch.add(plate);btn.classList.add('active');btn.innerHTML='<i class="fas fa-star"></i>';Toast.fire({icon:'success',title:`已加入 ${plate}`});}
  localStorage.setItem('watch',JSON.stringify([...this.watch]));this.filter();}
 
-select(plate){document.querySelectorAll('.truck-item.selected').forEach(el=>el.classList.remove('selected'));document.querySelector(`.truck-item[data-id='${plate}']`)?.classList.add('selected');const mk=this.markers.get(plate);if(mk){mk.openPopup();this.map.setView(mk.getLatLng(),16);}window.innerWidth<=768&&this.toggleSidebar(false);}
+select(plate){document.querySelectorAll('.truck-item.selected').forEach(el=>el.classList.remove('selected'));document.querySelector(`.truck-item[data-id='${plate}']`)?.classList.add('selected');const mk=this.markers.get(plate);const truck=this.filtered.get(plate)||this.trucks.get(plate);if(mk){mk.openPopup();this.map.setView(mk.getLatLng(),16);}this.renderUpcomingRoute(truck);window.innerWidth<=768&&this.toggleSidebar(false);}
+
+renderUpcomingRoute(truck){
+ this.clearRouteLayers();
+ if(!truck||truck.offline)return;
+ const fullRoute=truck.route||[];
+ const fullStops=truck.stops||[];
+ if(!fullRoute.length&&!fullStops.length)return;
+ const remainingRoute=this.getRemainingPath(fullRoute,[truck.y,truck.x]);
+ const remainingStops=this.getRemainingStops(fullStops,[truck.y,truck.x]);
+ if(remainingRoute.length>1){
+  this.routeLine=L.polyline(remainingRoute,{color:'#4da8ff',weight:5,opacity:.8,dashArray:'8 10'}).addTo(this.map);
+ }
+ remainingStops.forEach((s,i)=>{
+  L.circleMarker([s.lat,s.lng],{radius:6,color:'#fff',weight:2,fillColor:'#ff9800',fillOpacity:.95}).addTo(this.stopLayer).bindPopup(`<div class='popup-box'><h3>📍 停靠點 ${i+1}</h3><p>${s.name||'未命名停靠點'}</p></div>`,{className:'custom-popup',tipClass:'custom-popup-tip'});
+ });
+ if(this.routeLine||remainingStops.length){
+  const groups=[];
+  if(this.routeLine)groups.push(this.routeLine);
+  if(remainingStops.length)groups.push(L.featureGroup(this.stopLayer.getLayers()));
+  this.map.fitBounds(L.featureGroup(groups).getBounds().pad(0.15),{maxZoom:16});
+ }
+}
+
+clearRouteLayers(){if(this.routeLine){this.map.removeLayer(this.routeLine);this.routeLine=null;}this.stopLayer.clearLayers();}
+syncSelectedRoute(){const selected=document.querySelector('.truck-item.selected')?.dataset.id;if(!selected){this.clearRouteLayers();return;}const truck=this.filtered.get(selected)||this.trucks.get(selected);this.renderUpcomingRoute(truck);}
+getRemainingPath(route,current){if(route.length<2)return route;let idx=0,min=Infinity;route.forEach((p,i)=>{const d=this.haversine(current[0],current[1],p[0],p[1]);if(d<min){min=d;idx=i;}});return route.slice(idx);}
+getRemainingStops(stops,current){return [...stops].sort((a,b)=>this.haversine(current[0],current[1],a.lat,a.lng)-this.haversine(current[0],current[1],b.lat,b.lng));}
+normalizeStops(o){const raw=o.nextStops||o.stops||o.stopPoints||o.routeStops;const parsed=this.parseCoordCollection(raw);return parsed.map((p,i)=>({lat:p[0],lng:p[1],name:Array.isArray(raw)&&raw[i]?.name?raw[i].name:(Array.isArray(raw)&&raw[i]?.stopName)||''}));}
+normalizeRoute(o){const raw=o.routePath||o.route||o.path||o.trajectory||o.lineString;const parsed=this.parseCoordCollection(raw);return parsed.length>1?parsed:[];}
+parseCoordCollection(raw){if(!raw)return[];let arr=raw;if(typeof raw==='string'){try{arr=JSON.parse(raw);}catch{arr=this.parseWktLine(raw);} }
+ if(!Array.isArray(arr))return[];
+ return arr.map(p=>this.toLatLng(p)).filter(Boolean);
+}
+parseWktLine(text){const m=text.match(/LINESTRING\s*\((.+)\)/i);if(!m)return[];return m[1].split(',').map(s=>s.trim().split(/\s+/).map(Number));}
+toLatLng(point){if(!point)return null;if(Array.isArray(point)&&point.length>=2){const a=parseFloat(point[0]);const b=parseFloat(point[1]);if(Number.isFinite(a)&&Number.isFinite(b)){return Math.abs(a)<=90?[a,b]:[b,a];}}
+ const lat=parseFloat(point.lat??point.latitude??point.y);const lng=parseFloat(point.lng??point.lon??point.longitude??point.x);if(Number.isFinite(lat)&&Number.isFinite(lng))return[lat,lng];return null;}
 
 haversine(lat1,lon1,lat2,lon2){const R=6371e3;const toRad=x=>x*Math.PI/180;const dLat=toRad(lat2-lat1);const dLon=toRad(lon2-lon1);const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));}
 start(){this.fetch();this.timer=setInterval(()=>this.fetch(),this.interval);}restart(){clearInterval(this.timer);this.alerted.clear();this.start();}
