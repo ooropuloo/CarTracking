@@ -50,6 +50,7 @@ body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:#eee;min-heigh
 .sidebar-header h2{font-size:1rem;margin-bottom:.25rem;}
 .truck-count{font-size:1.8rem;font-weight:700;}
 .distance-info{font-size:.75rem;opacity:.85;margin-top:.25rem;}
+.route-hint{font-size:.74rem;opacity:.9;margin-top:.45rem;color:#ffe082;}
 .search-box{padding:.6rem 1rem;border-bottom:1px solid var(--border);}
 .search-box input{width:100%;padding:.55rem .8rem;border-radius:8px;border:1px solid var(--border);background:#111;color:#eee;}
 /* watch manage */
@@ -144,6 +145,7 @@ body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:#eee;min-heigh
       <div id="truckCount" class="truck-count">0</div>
       <div>台垃圾車</div>
       <div id="rangeInfo" class="distance-info">搜尋範圍：500公尺</div>
+      <div class="route-hint">點選清單或地圖車輛，顯示後續停靠點</div>
     </div>
     <div class="search-box"><input id="searchInput" placeholder="搜尋車牌/全部..." /></div>
     <div class="watch-manage"><input id="watchInput" placeholder="手動加入追蹤車牌..."/><button id="watchAddBtn"><i class="fas fa-plus"></i></button></div>
@@ -159,7 +161,7 @@ body{font-family:"Segoe UI",sans-serif;background:var(--bg);color:#eee;min-heigh
 <div id="logPanel" class="log-panel"></div>
 <script>
 (function(){
-const APP_VERSION='1.0.1';
+const APP_VERSION='1.0.2';
 document.getElementById('versionTag').textContent=`v${APP_VERSION}`;
 const Toast=Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timer:2200,timerProgressBar:true,background:'#333',color:'#fff'});
 const notify=(title,body)=>{
@@ -311,7 +313,10 @@ renderUpcomingRoute(truck){
  if(!truck||truck.offline)return;
  const fullRoute=truck.route||[];
  const fullStops=truck.stops||[];
- if(!fullRoute.length&&!fullStops.length)return;
+ if(!fullRoute.length&&!fullStops.length){
+  Toast.fire({icon:'info',title:`${truck.car} 暫無停靠點資料`});
+  return;
+ }
  const remainingRoute=this.getRemainingPath(fullRoute,[truck.y,truck.x]);
  const remainingStops=this.getRemainingStops(fullStops,[truck.y,truck.x]);
  if(remainingRoute.length>1){
